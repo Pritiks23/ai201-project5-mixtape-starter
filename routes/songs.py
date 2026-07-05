@@ -35,6 +35,7 @@ def rate(song_id):
         return jsonify({"error": "user_id and score are required"}), 400
     try:
         rating = rate_song(user_id, song_id, int(score))
+        record_listening_event(user_id=user_id, song_id=song_id)
         return jsonify(rating.to_dict()), 201
     except ValueError as e:
         return jsonify({"error": str(e)}), 400

@@ -40,19 +40,6 @@ def record_listening_event(user_id: str, song_id: str) -> ListeningEvent:
 
 
 def update_listening_streak(user: User, now: datetime) -> None:
-    """
-    Update a user's listening streak based on their last listening date.
-
-    Streak rules:
-    - If the user hasn't listened before: streak starts at 1.
-    - If the user already listened today: no change.
-    - If the user listened yesterday: streak increments by 1.
-    - If more than one day has passed: streak resets to 1.
-
-    Args:
-        user: The User model instance to update.
-        now: The current datetime (UTC).
-    """
     today = now.date()
 
     if user.last_listened_at is None:
@@ -68,10 +55,11 @@ def update_listening_streak(user: User, now: datetime) -> None:
     days_since_last = (today - last_date).days
 
     if days_since_last == 0:
-        # Already updated today — no change needed
         return
-    elif days_since_last == 1 and today.weekday() != 6:
+
+    elif days_since_last == 1:
         user.listening_streak += 1
+
     else:
         user.listening_streak = 1
 
