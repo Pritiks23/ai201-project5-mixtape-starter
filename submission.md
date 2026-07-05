@@ -25,6 +25,8 @@ The routes handle HTTP requests and responses, while the service layer contains 
 # AI Usage Section
 
 I used AI primarily as a debugging and code comprehension aid during Milestone 3, especially when tracing execution paths across services and understanding how different components (routes, service layers, and database models) interacted. I asked it to explain specific functions after I had already identified them in the codebase, such as playlist handling logic, feed generation, streak updates, and notification triggers, and to help clarify edge cases in datetime handling and query filtering behavior. It was particularly useful for reasoning about subtle issues like off-by-one slicing errors, time-window filtering logic, and differences in how “recent activity” should be interpreted versus how it was implemented. However, I did not rely on it to locate bugs directly; in several cases I had already reproduced the issue via curl and then used AI to help interpret the relevant function once I had found it manually. I also verified all suggested fixes by reading the surrounding code and re-running endpoints to confirm behavior changes, since AI explanations were occasionally too broad or would assume missing context about the data model or service flow.
+
+blob:https://mail.google.com/96736115-bace-4bad-a54c-74249e9db58b
 # Main Files
 
 ## app.py
