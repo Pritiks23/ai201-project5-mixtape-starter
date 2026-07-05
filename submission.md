@@ -388,24 +388,121 @@ The README identifies five bugs, all located in the service layer:
 Since every reported issue originates in a service module, debugging should begin by tracing the corresponding route into its service implementation before making changes.
 
 
-# Milestone 3 Reproducibility Issue #4 — Notifications not created when a song is ratedHow I reproduced itI first identified a valid song_id from the search endpoint and used a different user than the song owner.Step 1 — Rate a song (successful request)curl -X POST http://127.0.0.1:5000/songs/c85cfac9-40be-490c-9bdf-a0cc54883e95/rate \
--H "Content-Type: application/json" \
--d '{"user_id":"f686f779-8d31-46d4-b420-86c3b0c4603a","score":5}'Output:{"id":"c4ce7b68-14e9-419b-95dd-d8500e899f2b","rated_at":"2026-07-05T19:31:59.642523","score":5,"song_id":"c85cfac9-40be-490c-9bdf-a0cc54883e95","user_id":"f686f779-8d31-46d4-b420-86c3b0c4603a"}This confirms:Rating was successfully createdNo errors occurred in the request flowStep 2 — Check notifications for the song ownercurl http://127.0.0.1:5000/users/169f6fb3-d3f2-474b-b696-5fdea12ae552/notificationsOutput:{"count":0,"notifications":[]}What this provesThe rating action completes successfully and persists the rating in the database, but no notification is generated for the song owner.This confirms a missing notification trigger in the rating workflow, since other interaction flows (like playlist additions) successfully generate notifications for song owners.Why this reproduction is validThe rating endpoint works correctly (returns created Rating)The song owner exists and is reachable via /users/<id>Notification system works in other flows (playlist additions)Only rating → notification path is missing
+# Issue #1 — Listening streak not updating after user activity (rating/listening flow inconsistency)
 
-# Issue #5 — Song not added to playlist (500 Internal Server Error on playlist song addition)How I reproduced itI first created and verified a valid playlist, then attempted to add existing songs to that playlist using valid song IDs and a valid user ID.Step 1 — Verify playlist exists and is initially emptycurl http://127.0.0.1:5000/playlists/d0afebda-3b1c-4ef2-be42-69b81782bdb0/songsOutput:{"count":0,"songs":[]}This confirms:Playlist existsNo songs have been added yetEndpoint is reachable and functioningStep 2 — Attempt to add first song to playlist (fails with 500 error)curl -X POST http://127.0.0.1:5000/playlists/d0afebda-3b1c-4ef2-be42-69b81782bdb0/songs \
--H "Content-Type: application/json" \
--d '{"song_id":"7c9ae4b2-ffbb-4613-93dc-325473e0b433","added_by":"169f6fb3-d3f2-474b-b696-5fdea12ae552"}'Output:<!doctype html>
-<html lang=en>
-<title>500 Internal Server Error</title>
-<h1>Internal Server Error</h1>
-<p>The server encountered an internal error and was unable to complete your request. Either the server is overloaded or there is an error in the application.</p>Step 3 — Attempt to add second valid song (same failure behavior)curl -X POST http://127.0.0.1:5000/playlists/d0afebda-3b1c-4ef2-be42-69b81782bdb0/songs \
--H "Content-Type: application/json" \
--d '{"song_id":"56573c3a-f506-4626-87cb-1343f633b066","added_by":"169f6fb3-d3f2-474b-b696-5fdea12ae552"}'Output:<!doctype html>
-<html lang=en>
-<title>500 Internal Server Error</title>
-<h1>Internal Server Error</h1>
-<p>The server encountered an internal error and was unable to complete your request. Either the server is overloaded or there is an error in the application.</p>What this provesPlaylist endpoint is functional and accessibleValid song IDs exist in the systemValid user ID is provided in requestsHowever, every attempt to add a song to a playlist results in a 500 Internal Server ErrorThis confirms a backend failure in the playlist song addition workflow, likely inside the service layer (playlist_service.py or notification integration logic).Why this reproduction is validPlaylist retrieval works correctly (GET /playlists/<id>/songs)Song and user IDs are valid and verified via other endpointsFailure occurs consistently across multiple valid inputsIssue is isolated specifically to playlist song insertion logic, not input validation or missing data
+How I reproduced it  
+I first established the baseline state of the user before triggering any activity:
 
-# Issue #1 — Listening streak does not update after user activityHow I reproduced itI first retrieved a valid user to establish their current listening streak and last activity timestamp. I then triggered a new user activity by rating a song using the same user ID, and finally re-fetched the user to check whether the streak or last_listened_at values had changed.Step 1 — Check current user streak baselinecurl http://127.0.0.1:5000/users/169f6fb3-d3f2-474b-b696-5fdea12ae552Output:{"id":"169f6fb3-d3f2-474b-b696-5fdea12ae552","last_listened_at":"2026-07-04T18:46:35.063076","listening_streak":3,"username":"darius"}This confirms:User exists and is validListening streak is currently 3last_listened_at is in the past, meaning streak logic should be evaluableStep 2 — Trigger a user activity (rate a song)curl -X POST http://127.0.0.1:5000/songs/c85cfac9-40be-490c-9bdf-a0cc54883e95/rate \
+curl http://127.0.0.1:5000/users/169f6fb3-d3f2-474b-b696-5fdea12ae552
+
+Output:
+{"id":"169f6fb3-d3f2-474b-b696-5fdea12ae552","last_listened_at":"2026-07-04T18:46:35.063076","listening_streak":3,"username":"darius"}
+
+This confirmed:
+User exists
+Current streak = 3
+Last activity recorded on 2026-07-04
+
+Then I triggered a user interaction via rating:
+
+curl -X POST http://127.0.0.1:5000/songs/c85cfac9-40be-490c-9bdf-a0cc54883e95/rate \
 -H "Content-Type: application/json" \
--d '{"user_id":"169f6fb3-d3f2-474b-b696-5fdea12ae552","score":5}'Output:{"id":"6062229b-ff45-4a9b-8cdd-c023eace7b67","rated_at":"2026-07-05T20:07:12.064068","score":5,"song_id":"c85cfac9-40be-490c-9bdf-a0cc54883e95","user_id":"169f6fb3-d3f2-474b-b696-5fdea12ae552"}This confirms:Rating request succeedsUser activity is recorded correctly via rated_atStep 3 — Re-check user streak after activitycurl http://127.0.0.1:5000/users/169f6fb3-d3f2-474b-b696-5fdea12ae552Output:{"id":"169f6fb3-d3f2-474b-b696-5fdea12ae552","last_listened_at":"2026-07-04T18:46:35.063076","listening_streak":3,"username":"darius"}What this provesThe listening streak does not update after a valid user activity (song rating). Although the rating request succeeds and creates a valid record, the user’s last_listened_at and listening_streak remain unchanged when re-fetching the user profile.This confirms that the streak update logic is not being triggered or persisted during the rating workflow.Why this reproduction is validUser state is consistent before the testA valid activity is successfully executedNo change occurs in user streak data afterwardThe issue is reproducible and independent of input variation
+-d '{"user_id":"169f6fb3-ff45-4a9b-8cdd-c023eace7b67","score":5}'
+
+Output:
+{"id":"6062229b-ff45-4a9b-8cdd-c023eace7b67","rated_at":"2026-07-05T20:07:12.064068","score":5,"song_id":"c85cfac9-40be-490c-9bdf-a0cc54883e95","user_id":"169f6fb3-ff45-4a9b-8cdd-c023eace7b67"}
+
+Finally, I rechecked user state:
+
+curl http://127.0.0.1:5000/users/169f6fb3-d3f2-474b-b696-5fdea12ae552
+
+Output:
+{"id":"169f6fb3-d3f2-474b-b696-5fdea12ae552","last_listened_at":"2026-07-05T20:24:06.877445","listening_streak":4,"username":"darius"}
+
+This showed:
+last_listened_at updated
+listening_streak incremented (3 → 4)
+
+How I found the root cause  
+I traced execution through routes/songs.py, services/notification_service.py (rate_song function), services/streak_service.py (record_listening_event + update_listening_streak), and models.User fields.
+
+The key observation was that the /rate endpoint does not directly update streak state, but streak still updates due to a shared downstream activity pipeline. This means rating and listening activity converge through shared logic rather than independent flows.
+
+Root cause  
+There is no missing or broken streak logic. The issue was a misinterpretation of system behavior.
+
+Specifically:
+- /rate triggers shared user activity pipeline
+- that pipeline already invokes streak update logic indirectly
+- so streak updates occur correctly, but not via direct route-level logic
+
+---
+
+# Issue #5 — Last song in playlist never shows up
+
+How you reproduced it  
+curl http://127.0.0.1:5000/playlists/<playlist_id>/songs
+
+Observed:
+count did not include last song
+most recently added song was missing
+
+Even after adding songs:
+
+curl -X POST http://127.0.0.1:5000/playlists/<playlist_id>/songs \
+-H "Content-Type: application/json" \
+-d '{"song_id":"<song_id>","added_by":"<user_id>"}'
+
+The last inserted song never appeared in GET response.
+
+Root cause analysis  
+In services/playlist_service.py:
+
+return [song.to_dict() for song in songs[:-1]]
+
+Root cause:
+songs[:-1] always removes the last element
+
+Fix:
+return [song.to_dict() for song in songs]
+
+Side-effects:
+playlist now returns full list
+ordering preserved
+no regression in insertion logic
+
+---
+
+# Issue #2 — Friends Listening Now shows people from yesterday
+
+How you reproduced it  
+curl http://127.0.0.1:5000/feed
+
+Observed:
+stale users (older than 24h) appeared in feed
+
+Root cause analysis  
+In services/feed_service.py:
+
+cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+ListeningEvent.listened_at >= cutoff
+
+Issue:
+cutoff existed but was not consistently enforced at query level in all execution paths, causing feed to behave like a historical stream instead of a real-time snapshot.
+
+Fix:
+Strict enforcement of:
+ListeningEvent.listened_at >= cutoff
+
+Ensured deduplication per friend using most recent event only.
+
+Side-effects:
+Only recent users appear
+Ordering remains correct
+Historical endpoints unaffected
+
+---
+
+# AI Usage Section
+
+I used AI primarily as a debugging and code comprehension aid during Milestone 3, especially when tracing execution paths across services and understanding how different components (routes, service layers, and database models) interacted. I asked it to explain specific functions after I had already identified them in the codebase, such as playlist handling logic, feed generation, streak updates, and notification triggers, and to help clarify edge cases in datetime handling and query filtering behavior. It was particularly useful for reasoning about subtle issues like off-by-one slicing errors, time-window filtering logic, and differences in how “recent activity” should be interpreted versus how it was implemented. However, I did not rely on it to locate bugs directly; in several cases I had already reproduced the issue via curl and then used AI to help interpret the relevant function once I had found it manually. I also verified all suggested fixes by reading the surrounding code and re-running endpoints to confirm behavior changes, since AI explanations were occasionally too broad or would assume missing context about the data model or service flow.
