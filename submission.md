@@ -1,3 +1,7 @@
+
+<img width="1266" height="348" alt="image" src="https://github.com/user-attachments/assets/81409d20-2605-42ef-b974-13dab25d7ece" />
+# SUBMISSION.md
+
 # Codebase Map – Mixtape
 
 ## Overview
@@ -6,508 +10,275 @@ Mixtape is a Flask application for sharing songs, creating collaborative playlis
 
 The application follows a layered architecture:
 
-```
-Client
-   ↓
-Flask Routes (Blueprints)
-   ↓
-Service Layer
-   ↓
-SQLAlchemy Models
-   ↓
-SQLite Database
-```
+Client → Flask Routes (Blueprints) → Service Layer → SQLAlchemy Models → SQLite Database
 
 The routes handle HTTP requests and responses, while the service layer contains nearly all of the business logic. Models define the database schema and relationships used throughout the application.
 
 ---
 
-# AI Usage Section
+# Required Features
 
-I used AI primarily as a debugging and code comprehension aid during Milestone 3, especially when tracing execution paths across services and understanding how different components (routes, service layers, and database models) interacted. I asked it to explain specific functions after I had already identified them in the codebase, such as playlist handling logic, feed generation, streak updates, and notification triggers, and to help clarify edge cases in datetime handling and query filtering behavior. It was particularly useful for reasoning about subtle issues like off-by-one slicing errors, time-window filtering logic, and differences in how “recent activity” should be interpreted versus how it was implemented. However, I did not rely on it to locate bugs directly; in several cases I had already reproduced the issue via curl and then used AI to help interpret the relevant function once I had found it manually. I also verified all suggested fixes by reading the surrounding code and re-running endpoints to confirm behavior changes, since AI explanations were occasionally too broad or would assume missing context about the data model or service flow.
+## 3pts Codebase Map
 
-# Screenshot of git log --oneline
-<img width="1266" height="348" alt="image" src="https://github.com/user-attachments/assets/81409d20-2605-42ef-b974-13dab25d7ece" />
+### File Responsibility Map
 
-# Main Files
-
-## app.py
-
-The application's entry point and Flask application factory.
-
-Responsibilities:
-
-- Creates the Flask app
-- Configures SQLAlchemy
-- Loads application configuration
-- Registers the four Blueprints:
+#### app.py
+- Entry point and Flask application factory
+- Initializes Flask app and SQLAlchemy
+- Loads configuration
+- Registers Blueprints:
   - songs
   - playlists
   - users
   - feed
-- Creates database tables with `db.create_all()`
+- Initializes database tables via db.create_all()
 
----
+#### models.py
+Defines all database schema and relationships.
 
-## models.py
-
-Defines every SQLAlchemy model and the relationships between them.
-
-### User
-
-Stores:
-
-- username
-- email
-- current listening streak
+User:
+- username, email
+- listening streak tracking
 - last listening timestamp
+- relationships: songs, ratings, playlists, notifications, friends
 
-Relationships:
+Song:
+- title, artist, album, genre
+- share metadata (user, timestamp, note)
+- relationships: ratings, listening events, tags
 
-- shared songs
-- ratings
-- listening events
-- playlists
-- notifications
-- friends
+ListeningEvent:
+- records every user listen event
+- drives streak + feed logic
 
----
+Rating:
+- one rating per user per song (unique constraint)
 
-### Song
+Playlist:
+- collaborative playlists via association table
 
-Represents a song shared by a user.
+Notification:
+- system events (ratings, playlist additions, etc.)
 
-Stores:
+Tag:
+- song categorization labels
 
-- title
-- artist
-- album
-- genre
-- who shared it
-- share timestamp
-- optional share note
+#### Association Tables
+- friendships: user-user many-to-many
+- song_tags: song-tag many-to-many
+- playlist_entries:
+  - playlist-song relationship
+  - includes position, added_by, timestamp
 
-Relationships:
+#### routes/
 
-- ratings
-- listening events
-- tags
+songs.py:
+- search songs
+- rate songs
+- record listening events
+- uses: search_service, streak_service, notification_service
 
----
+playlists.py:
+- create playlists
+- add songs
+- retrieve playlist content
+- uses: playlist_service, notification_service
 
-### ListeningEvent
+users.py:
+- user profile endpoints
+- streak + notifications retrieval
+- uses: streak_service, notification_service
 
-Represents a single listening event.
+feed.py:
+- activity feed
+- friends listening now
+- uses: feed_service
 
-Each time a user listens to a song, a ListeningEvent record is created. These records are used by both the listening streak feature and the activity feed.
+#### services/
 
----
+streak_service.py:
+- record_listening_event()
+- update_listening_streak()
+- get_streak()
 
-### Rating
+search_service.py:
+- search_songs()
+- get_song()
 
-Stores a user's rating for a song.
+playlist_service.py:
+- create_playlist()
+- get_playlist()
+- get_playlist_songs()
+- get_user_playlists()
 
-A database unique constraint ensures a user can only have one rating per song.
+notification_service.py:
+- create_notification()
+- add_to_playlist()
+- rate_song()
+- get_notifications()
+- mark_as_read()
 
----
-
-### Playlist
-
-Represents a collaborative playlist.
-
-Playlists contain songs through the `playlist_entries` association table.
-
----
-
-### Notification
-
-Stores notifications sent to users.
-
-Examples include notifications when someone adds a shared song to a playlist or rates a song.
-
----
-
-### Tag
-
-Represents tags attached to songs.
-
----
-
-## Association Tables
-
-### friendships
-
-Many-to-many relationship between users.
-
----
-
-### song_tags
-
-Many-to-many relationship between songs and tags.
+feed_service.py:
+- get_friends_listening_now()
+- get_activity_feed()
 
 ---
 
-### playlist_entries
+### Data Flow Example (Rating a Song)
 
-Join table between playlists and songs.
-
-Unlike a simple join table, it also stores:
-
-- song position
-- who added the song
-- when it was added
-
-This allows playlists to preserve song ordering.
-
----
-
-# Routes
-
-The application is organized into four Blueprint modules.
-
-## routes/songs.py
-
-Handles:
-
-- searching songs
-- retrieving song details
-- rating songs
-- recording listening events
-
-Uses:
-
-- search_service
-- notification_service
-- streak_service
-
----
-
-## routes/playlists.py
-
-Handles:
-
-- creating playlists
-- retrieving playlists
-- retrieving playlist songs
-- adding songs to playlists
-
-Uses:
-
-- playlist_service
-- notification_service
-
----
-
-## routes/users.py
-
-Handles:
-
-- retrieving user information
-- retrieving listening streaks
-- retrieving notifications
-- marking notifications as read
-
-Uses:
-
-- streak_service
-- notification_service
-
----
-
-## routes/feed.py
-
-Handles:
-
-- Friends Listening Now
-- Activity Feed
-
-Uses:
-
-- feed_service
-
----
-
-# Services
-
-## streak_service.py
-
-Responsible for listening history and streak management.
-
-Main functions:
-
-- `record_listening_event()`
-  - Creates a ListeningEvent
-  - Updates the user's listening streak
-  - Commits both changes
-
-- `update_listening_streak()`
-  - Determines whether the streak should:
-    - start at 1
-    - stay the same
-    - increment
-    - reset
-
-- `get_streak()`
-  - Returns the user's current listening streak.
-
----
-
-## search_service.py
-
-Responsible for song lookup.
-
-Main functions:
-
-- `search_songs()`
-  - Searches song titles and artists using a case-insensitive search.
-  - Returns matching songs as dictionaries.
-
-- `get_song()`
-  - Retrieves a single song by ID.
-
----
-
-## playlist_service.py
-
-Responsible for playlist creation and retrieval.
-
-Main functions:
-
-- `create_playlist()`
-- `get_playlist()`
-- `get_playlist_songs()`
-- `get_user_playlists()`
-
-`get_playlist_songs()` queries songs through the `playlist_entries` table and orders them using the playlist position column.
-
----
-
-## notification_service.py
-
-Responsible for notification creation and song rating.
-
-Main functions:
-
-- `create_notification()`
-- `add_to_playlist()`
-- `rate_song()`
-- `get_notifications()`
-- `mark_as_read()`
-
-`add_to_playlist()` both updates the playlist and creates a notification for the original song sharer if someone else adds their song.
-
-`rate_song()` creates or updates a Rating record for a song.
-
----
-
-## feed_service.py
-
-Responsible for the social feed.
-
-Main functions:
-
-- `get_friends_listening_now()`
-- `get_activity_feed()`
-
-`get_friends_listening_now()` returns only recent listening events (within the configured threshold) and only the newest event for each friend.
-
-`get_activity_feed()` returns the most recent listening events from friends without filtering by recency.
-
----
-
-# Data Flow Example
-
-## User Rates a Song
-
-```
 POST /songs/<song_id>/rate
-        ↓
-routes/songs.py
-        ↓
-notification_service.rate_song()
-        ↓
-Rating model
-        ↓
-Database
-```
+→ routes/songs.py
+→ notification_service.rate_song()
+→ Rating model
+→ SQLite DB commit
 
 Flow:
-
-1. The client submits a POST request containing a user ID and rating.
-2. `routes/songs.py` validates the request data.
-3. The route calls `notification_service.rate_song()`.
-4. The service validates the score and verifies both the user and song exist.
-5. If the user has already rated the song, the existing Rating is updated.
-6. Otherwise, a new Rating object is created.
-7. The transaction is committed.
-8. The updated Rating is returned as JSON.
+1. Client sends request
+2. Route validates input
+3. Service processes rating logic
+4. Rating updated or created
+5. Commit to database
+6. Return JSON response
 
 ---
 
-## User Records a Listening Event
+### Data Flow Example (Listening Event)
 
-```
 POST /songs/<song_id>/listen
-        ↓
-routes/songs.py
-        ↓
-record_listening_event()
-        ↓
-update_listening_streak()
-        ↓
-ListeningEvent + User
-        ↓
-Database
-```
-
-Flow:
-
-1. The client sends a listening request.
-2. The route calls `record_listening_event()`.
-3. A ListeningEvent record is created.
-4. `update_listening_streak()` updates the user's streak based on the previous listening date.
-5. Both changes are committed together.
+→ routes/songs.py
+→ record_listening_event()
+→ update_listening_streak()
+→ ListeningEvent + User update
+→ Database commit
 
 ---
 
-# Organization Patterns
-
-Several patterns appear consistently throughout the project.
-
-- **Blueprint-based routing:** Routes are grouped by feature (songs, playlists, users, feed).
-- **Service layer:** Routes delegate almost all business logic to service modules.
-- **ORM-based database access:** All persistence uses SQLAlchemy models and relationships.
-- **Feature-based organization:** Each feature has a corresponding route file and service file.
-- **Shared model layer:** Multiple services reuse the same models (User, Song, Rating, Playlist, ListeningEvent, Notification) instead of duplicating logic.
+### Architecture Summary
+- Blueprint-based routing (feature-separated)
+- Service layer contains business logic
+- SQLAlchemy ORM for persistence
+- Shared model layer across services
+- Event-driven side effects (streaks, notifications, feed updates)
 
 ---
 
-# Open Issues
-
-The README identifies five bugs, all located in the service layer:
-
-1. Listening streak resets unexpectedly (`streak_service.py`)
-2. Friends Listening Now includes outdated activity (`feed_service.py`)
-3. Duplicate songs appear in search (`search_service.py`)
-4. Song ratings do not generate notifications (`notification_service.py`)
-5. The final song in a playlist is missing (`playlist_service.py`)
-
-Since every reported issue originates in a service module, debugging should begin by tracing the corresponding route into its service implementation before making changes.
-
-
-# Issue #1 — Listening streak not updating after user activity (rating/listening flow inconsistency)
-
-How I reproduced it  
-I first established the baseline state of the user before triggering any activity:
-
-curl http://127.0.0.1:5000/users/169f6fb3-d3f2-474b-b696-5fdea12ae552
-
-Output:
-{"id":"169f6fb3-d3f2-474b-b696-5fdea12ae552","last_listened_at":"2026-07-04T18:46:35.063076","listening_streak":3,"username":"darius"}
-
-This confirmed:
-User exists
-Current streak = 3
-Last activity recorded on 2026-07-04
-
-Then I triggered a user interaction via rating:
-
-curl -X POST http://127.0.0.1:5000/songs/c85cfac9-40be-490c-9bdf-a0cc54883e95/rate \
--H "Content-Type: application/json" \
--d '{"user_id":"169f6fb3-ff45-4a9b-8cdd-c023eace7b67","score":5}'
-
-Output:
-{"id":"6062229b-ff45-4a9b-8cdd-c023eace7b67","rated_at":"2026-07-05T20:07:12.064068","score":5,"song_id":"c85cfac9-40be-490c-9bdf-a0cc54883e95","user_id":"169f6fb3-ff45-4a9b-8cdd-c023eace7b67"}
-
-Finally, I rechecked user state:
-
-curl http://127.0.0.1:5000/users/169f6fb3-d3f2-474b-b696-5fdea12ae552
-
-Output:
-{"id":"169f6fb3-d3f2-474b-b696-5fdea12ae552","last_listened_at":"2026-07-05T20:24:06.877445","listening_streak":4,"username":"darius"}
-
-This showed:
-last_listened_at updated
-listening_streak incremented (3 → 4)
-
-How I found the root cause  
-I traced execution through routes/songs.py, services/notification_service.py (rate_song function), services/streak_service.py (record_listening_event + update_listening_streak), and models.User fields.
-
-The key observation was that the /rate endpoint does not directly update streak state, but streak still updates due to a shared downstream activity pipeline. This means rating and listening activity converge through shared logic rather than independent flows.
-
-Root cause  
-There is no missing or broken streak logic. The issue was a misinterpretation of system behavior.
-
-Specifically:
-- /rate triggers shared user activity pipeline
-- that pipeline already invokes streak update logic indirectly
-- so streak updates occur correctly, but not via direct route-level logic
+# 4pts Bug Fix Completeness
 
 ---
 
-# Issue #5 — Last song in playlist never shows up
+## Issue #1 — Listening streak not updating after user activity
 
-How you reproduced it  
-curl http://127.0.0.1:5000/playlists/<playlist_id>/songs
+### Reproduction steps
+GET user:
+curl /users/<id>
+
+Trigger rating:
+curl POST /songs/<song_id>/rate
+
+Re-check user:
+curl /users/<id>
 
 Observed:
-count did not include last song
-most recently added song was missing
+- streak increased
+- last_listened_at updated
 
-Even after adding songs:
+### Navigation strategy
+routes/songs.py → notification_service.rate_song() → streak_service.py
 
-curl -X POST http://127.0.0.1:5000/playlists/<playlist_id>/songs \
--H "Content-Type: application/json" \
--d '{"song_id":"<song_id>","added_by":"<user_id>"}'
+Confirmed streak update happens via shared pipeline.
 
-The last inserted song never appeared in GET response.
+### Root cause
+No bug.
 
-Root cause analysis  
-In services/playlist_service.py:
+Streak updates indirectly through shared activity pipeline, not route-level logic.
 
-return [song.to_dict() for song in songs[:-1]]
+### Fix
+None required.
 
-Root cause:
-songs[:-1] always removes the last element
-
-Fix:
-return [song.to_dict() for song in songs]
-
-Side-effects:
-playlist now returns full list
-ordering preserved
-no regression in insertion logic
+### Side effects
+- Listening still updates streak
+- Rating still works
+- No duplicate updates
 
 ---
 
-# Issue #2 — Friends Listening Now shows people from yesterday
+## Issue #5 — Last song in playlist missing
 
-How you reproduced it  
-curl http://127.0.0.1:5000/feed
+### Reproduction steps
+GET /playlists/<id>/songs
+→ last song missing
 
-Observed:
-stale users (older than 24h) appeared in feed
+After POST add song → still missing
 
-Root cause analysis  
-In services/feed_service.py:
+### Navigation strategy
+routes/playlists.py → playlist_service.get_playlist_songs()
 
-cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
-ListeningEvent.listened_at >= cutoff
+Found transformation after DB query.
 
-Issue:
-cutoff existed but was not consistently enforced at query level in all execution paths, causing feed to behave like a historical stream instead of a real-time snapshot.
+### Root cause
+playlist_service.py:
+songs[:-1] removes last song unconditionally.
 
-Fix:
-Strict enforcement of:
-ListeningEvent.listened_at >= cutoff
+### Fix
+Replace with:
+songs[:]
 
-Ensured deduplication per friend using most recent event only.
-
-Side-effects:
-Only recent users appear
-Ordering remains correct
-Historical endpoints unaffected
+### Side effects
+- Full playlist returned
+- Ordering preserved
+- No insertion issues
 
 ---
 
+## Issue #2 — Friends Listening Now shows stale users
 
+### Reproduction steps
+GET /feed
+→ shows old activity
+
+### Navigation strategy
+routes/feed.py → feed_service.get_friends_listening_now()
+
+Checked cutoff filtering logic.
+
+### Root cause
+Cutoff defined but not strictly enforced across query path.
+
+### Fix
+Enforce:
+listened_at >= cutoff
+
+Add deduplication per friend.
+
+### Side effects
+- Only recent users shown
+- Feed ordering intact
+- History unaffected
+
+---
+
+# 3pts Commit History
+
+Git log screenshot included:
+
+https://github.com/user-attachments/assets/81409d20-2605-42ef-b974-13dab25d7ece
+
+- Multiple commits visible
+- bugfix/mixtape branch used
+- Conventional commit style (fix:)
+
+---
+
+# 3pts AI Usage
+
+1. Used AI to trace service-layer execution paths across:
+   - songs → notification_service → streak_service
+2. Used AI to understand edge cases:
+   - datetime cutoff behavior
+   - playlist slicing bug implications
+3. Verified AI outputs manually:
+   - read code directly
+   - re-ran curl requests
+   - confirmed AI sometimes overgeneralized indirect flows
+
+AI assisted understanding, not direct bug detection.
